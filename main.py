@@ -1,155 +1,175 @@
-# Import the necessary libraries
-
-# For Data loading, Exploratory Data Analysis, Graphing
-import pandas as pd   # Pandas for data processing libraries
-import numpy as np    # Numpy for mathematical functions
-
-import matplotlib.pyplot as plt # Matplotlib for visualization tasks
-import seaborn as sns # Seaborn for data visualization library based on matplotlib.
-
-import sklearn        # ML tasks
-from sklearn.model_selection import train_test_split # Split the dataset
-from sklearn.metrics import mean_squared_error  # Calculate Mean Squared Error
-
-# Build the Network
+import sys
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import LabelEncoder
 from tensorflow import keras
 from keras.models import Sequential
 from keras.layers import Dense
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget, QPushButton, QTextEdit, QFileDialog
+from PyQt5.QtCore import Qt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
-# Load the CSV file with specified encoding to avoid errors
-url = '/Users/vinayak/Documents/GitHub/M-fine/M-fine/sales_data_sample.csv'
-advertising_df = pd.read_csv(url, index_col=0, encoding='latin1')
+class SalesAnalysisApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Sales Data Analysis")
+        self.setGeometry(100, 100, 1200, 800)
 
-# Get concise summary and shape of the dataframe
-advertising_df.info()
-print(advertising_df.describe())
-print("Shape of the dataset:", advertising_df.shape)
-print(advertising_df.head())
+        # Create main widget and layout
+        main_widget = QWidget()
+        main_layout = QVBoxLayout()
+        main_widget.setLayout(main_layout)
+        self.setCentralWidget(main_widget)
 
-# Check for missing values
-missing_values = advertising_df.isnull().sum()
-print("Missing values:\n", missing_values)
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+        main_layout.addWidget(self.tab_widget)
 
-# Drop rows with missing values
-advertising_df.dropna(inplace=True)
+        # Create tabs
+        self.create_data_tab()
+        self.create_correlation_tab()
+        self.create_model_tab()
+        self.create_results_tab()
 
-# Convert date columns to datetime, if applicable (replace 'date_column' with the actual column name)
-# advertising_df['date_column'] = pd.to_datetime(advertising_df['date_column'], errors='coerce')
+    def create_data_tab(self):
+        data_tab = QWidget()
+        layout = QVBoxLayout()
+        data_tab.setLayout(layout)
 
-# Drop non-numeric columns before computing correlation matrix (assuming 'date_column' and similar columns)
-non_numeric_columns = advertising_df.select_dtypes(exclude=[np.number]).columns
-advertising_df_numeric = advertising_df.drop(columns=non_numeric_columns)
+        self.load_button = QPushButton("Load Data")
+        self.load_button.clicked.connect(self.load_data)
+        layout.addWidget(self.load_button)
 
-## Exploratory Data Analysis (EDA)
+        self.data_info = QTextEdit()
+        self.data_info.setReadOnly(True)
+        layout.addWidget(self.data_info)
 
-# Plot a heatmap for the correlation matrix
-plt.figure(figsize=(10, 5))
-sns.heatmap(advertising_df_numeric.corr(), annot=True, vmin=-1, vmax=1, cmap='ocean')
-plt.title("Correlation Heatmap")
-plt.show()
+        self.tab_widget.addTab(data_tab, "Data")
 
-# Create a correlation matrix for values >= 0.5 or <= -0.7
-corr = advertising_df_numeric.corr()
-plt.figure(figsize=(10, 5))
-sns.heatmap(corr[(corr >= 0.5) | (corr <= -0.7)], 
-            cmap='viridis', vmax=1.0, vmin=-1.0, 
-            linewidths=0.1, annot=True, annot_kws={"size": 8}, square=True)
-plt.title("Filtered Correlation Matrix (Threshold: 0.5 and -0.7)")
-plt.tight_layout()
-plt.show()
-advertising_df.corr()
+    def create_correlation_tab(self):
+        correlation_tab = QWidget()
+        layout = QVBoxLayout()
+        correlation_tab.setLayout(layout)
 
-### Visualize Correlation
+        self.correlation_canvas = FigureCanvas(plt.Figure(figsize=(10, 8)))
+        layout.addWidget(self.correlation_canvas)
 
-# Generate a mask for the upper triangle
-mask = np.zeros_like(advertising_df.corr(), dtype=bool)
-mask[np.triu_indices_from(mask)] = True
+        self.tab_widget.addTab(correlation_tab, "Correlation")
 
-# Set up the matplotlib figure
-f, ax = plt.subplots(figsize=(11, 9))
+    def create_model_tab(self):
+        model_tab = QWidget()
+        layout = QVBoxLayout()
+        model_tab.setLayout(layout)
 
-# Generate a custom diverging colormap
-cmap = sns.diverging_palette(220, 10, as_cmap=True)
+        self.train_button = QPushButton("Train Model")
+        self.train_button.clicked.connect(self.train_model)
+        layout.addWidget(self.train_button)
 
-# Draw the heatmap with the mask and correct aspect ratio
-sns.heatmap(advertising_df.corr(), mask=mask, cmap=cmap, vmax=.9, square=True, linewidths=.5, ax=ax)
+        self.model_info = QTextEdit()
+        self.model_info.setReadOnly(True)
+        layout.addWidget(self.model_info)
 
-# Display the correlation matrix
-plt.title("Correlation Matrix")
-plt.show()
+        self.loss_canvas = FigureCanvas(plt.Figure(figsize=(10, 6)))
+        layout.addWidget(self.loss_canvas)
 
-'''=== Show the linear relationship between features  and sales Thus, it provides that how the scattered
-      they are and which features has more impact in prediction of house price. ==='''
+        self.tab_widget.addTab(model_tab, "Model")
 
-# visiualize all variables  with sales
-from scipy import stats
-#creates figure
-plt.figure(figsize=(18, 18))
+    def create_results_tab(self):
+        results_tab = QWidget()
+        layout = QVBoxLayout()
+        results_tab.setLayout(layout)
 
-for i, col in enumerate(advertising_df.columns[0:13]): #iterates over all columns except for price column (last one)
-    plt.subplot(5, 3, i+1) # each row three figure
-    x = advertising_df[col] #x-axis
-    y = advertising_df['sales'] #y-axis
-    plt.plot(x, y, 'o')
+        self.results_canvas = FigureCanvas(plt.Figure(figsize=(10, 6)))
+        layout.addWidget(self.results_canvas)
 
-    # Create regression line
-    plt.plot(np.unique(x), np.poly1d(np.polyfit(x, y, 1)) (np.unique(x)), color='red')
-    plt.xlabel(col) # x-label
-    plt.ylabel('sales') # y-label   
-    plt.title(f'{col} vs sales') # title
-    plt.tight_layout()
-    plt.show()
+        self.tab_widget.addTab(results_tab, "Results")
 
+    def load_data(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open CSV File", "", "CSV Files (*.csv)")
+        if file_name:
+            self.advertising_df = pd.read_csv(file_name)
+            self.preprocess_data()
+            self.update_data_info()
+            self.plot_correlation()
 
-from sklearn.preprocessing import LabelEncoder
+    def preprocess_data(self):
+        # Process the date column
+        self.advertising_df['ORDERDATE'] = pd.to_datetime(self.advertising_df['ORDERDATE'], errors='coerce')
+        self.advertising_df['YEAR'] = self.advertising_df['ORDERDATE'].dt.year
+        self.advertising_df['MONTH'] = self.advertising_df['ORDERDATE'].dt.month
+        self.advertising_df['DAY'] = self.advertising_df['ORDERDATE'].dt.day
+        self.advertising_df.drop(columns=['ORDERDATE'], inplace=True)
 
-# Encoding categorical columns to numeric
-label_encoder = LabelEncoder()
+        # Encoding categorical columns
+        label_encoder = LabelEncoder()
+        categorical_columns = ['CITY', 'COUNTRY', 'PRODUCTLINE', 'CUSTOMERNAME', 'DEALSIZE', 'OCCUPATION']
+        for col in categorical_columns:
+            self.advertising_df[col] = label_encoder.fit_transform(self.advertising_df[col])
 
-# Apply LabelEncoder on all categorical columns
-for col in ['CITY', 'COUNTRY', 'PRODUCTLINE', 'CUSTOMERNAME', 'DEALSIZE']:
-    advertising_df[col] = label_encoder.fit_transform(advertising_df[col])
+    def update_data_info(self):
+        info = f"Dataset shape: {self.advertising_df.shape}\n\n"
+        info += "Data Info:\n" + self.advertising_df.info().__str__() + "\n\n"
+        info += "Data Description:\n" + self.advertising_df.describe().__str__()
+        self.data_info.setText(info)
 
-# Handle the date column (assuming 'date_column' exists)
-advertising_df['ORDERDATE'] = pd.to_datetime(advertising_df['ORDERDATE'], errors='coerce')
+    def plot_correlation(self):
+        numeric_columns = self.advertising_df.select_dtypes(include=[np.number]).columns
+        correlation = self.advertising_df[numeric_columns].corr()
 
-# You can extract year, month, day for the date
-advertising_df['YEAR'] = advertising_df['ORDERDATE'].dt.year
-advertising_df['MONTH'] = advertising_df['ORDERDATE'].dt.month
-advertising_df['DAY'] = advertising_df['ORDERDATE'].dt.day
+        ax = self.correlation_canvas.figure.subplots()
+        sns.heatmap(correlation, annot=True, cmap='coolwarm', linewidths=0.5, ax=ax)
+        ax.set_title("Correlation Heatmap")
+        self.correlation_canvas.draw()
 
-# Drop the original date column if not needed anymore
-advertising_df.drop(columns=['ORDERDATE'], inplace=True)
+    def train_model(self):
+        feature_columns = ['PRICE', 'CITY', 'COUNTRY', 'PRODUCTLINE', 'CUSTOMERNAME', 'DEALSIZE', 'YEAR', 'MONTH', 'DAY', 'OCCUPATION', 'ANNUAL_INCOME']
+        X = self.advertising_df[feature_columns]
+        y = self.advertising_df['SALES']
 
-# Now use the processed data for model training
-X = advertising_df[['PRICE', 'CITY', 'COUNTRY', 'PRODUCTLINE', 'CUSTOMERNAME', 'DEALSIZE', 'YEAR', 'MONTH', 'DAY']]
-y = advertising_df['SALES']
+        normalized_feature = keras.utils.normalize(X.values)
+        X_train, X_test, y_train, y_test = train_test_split(normalized_feature, y, test_size=0.3, random_state=42)
 
-# Normalize the features
-normalized_feature = keras.utils.normalize(X.values)
+        model = Sequential()
+        model.add(Dense(16, input_dim=X_train.shape[1], activation='relu'))
+        model.add(Dense(8, activation='relu'))
+        model.add(Dense(1))
+        model.compile(optimizer='adam', loss='mse', metrics=['mse'])
 
-# Train-test split
-X_train, X_test, y_train, y_test = train_test_split(normalized_feature, y, test_size=0.3, random_state=42)
-print(X_train.shape, X_test.shape, y_train.shape, y_test.shape)
+        history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=50, batch_size=32, verbose=0)
 
-# Build the ANN model
-model = Sequential()
-model.add(Dense(8, input_dim=X_train.shape[1], activation='relu'))
-model.add(Dense(4, activation='relu'))
-model.add(Dense(1))
+        self.plot_loss(history)
+        self.plot_results(model, X_test, y_test)
 
-# Compile Model
-model.compile(optimizer='adam', loss='mse', metrics=['mse'])
+        train_mse = model.evaluate(X_train, y_train, verbose=0)[1]
+        test_mse = model.evaluate(X_test, y_test, verbose=0)[1]
+        self.model_info.setText(f"Train MSE: {train_mse:.4f}\nTest MSE: {test_mse:.4f}")
 
-# Fit the Model
-history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=32)
+    def plot_loss(self, history):
+        ax = self.loss_canvas.figure.subplots()
+        ax.plot(history.history['loss'], label='Train Loss')
+        ax.plot(history.history['val_loss'], label='Validation Loss')
+        ax.set_title('Model Loss (MSE) on Training and Validation Data')
+        ax.set_ylabel('Loss (Mean Squared Error)')
+        ax.set_xlabel('Epoch')
+        ax.legend(loc='upper right')
+        self.loss_canvas.draw()
 
-# Plot model loss
-plt.figure(figsize=(15, 8))
-plt.plot(history.history['loss'])
-plt.plot(history.history['val_loss'])
-plt.title('Model Loss (MSE) on Training and Validation Data')
-plt.ylabel('Loss-Mean Squared Error')
-plt.xlabel('Epoch')
-plt.legend(['Train Loss', 'Val Loss'], loc='upper right')
-plt.show()
+    def plot_results(self, model, X_test, y_test):
+        y_pred = model.predict(X_test)
+        ax = self.results_canvas.figure.subplots()
+        ax.scatter(y_test, y_pred, alpha=0.5)
+        ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', lw=2)
+        ax.set_xlabel('Actual Sales')
+        ax.set_ylabel('Predicted Sales')
+        ax.set_title('Actual vs Predicted Sales')
+        self.results_canvas.draw()
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    main_window = SalesAnalysisApp()
+    main_window.show()
+    sys.exit(app.exec_())
